@@ -67,3 +67,29 @@
 - Дополнительные виды спорта.
 - Новые региональные интеграции.
 - Продвинутые спортивные показатели.
+
+## Связь этапов реализации с требованиями и архитектурой
+
+Требования приведены по идентификаторам из
+[функциональных требований](../02-requirements/functional-requirements.md),
+компоненты — из [концептуальной](../03-architecture/conceptual-architecture.md)
+и [базовой архитектуры](../03-architecture/base-architecture.md).
+
+| Этап | Основные требования | Архитектурные компоненты |
+|---|---|---|
+| MVP | FR-USER-01, FR-USER-02; FR-TRAIN-01, FR-TRAIN-02, FR-TRAIN-03, FR-TRAIN-04; базовые FR-DEVICE-03 | Identity & Profile, Training, Integration Layer; базовые показатели внутри Training |
+| Social | FR-SOCIAL-01, FR-SOCIAL-02, FR-SOCIAL-03, FR-SOCIAL-04, FR-SOCIAL-05, FR-SOCIAL-06 | Social & Groups, Notifications при необходимости |
+| Gamification | FR-GAME-01, FR-GAME-02, FR-GAME-03, FR-GAME-04 | Challenges & Gamification, Event Broker, Notifications |
+| Personalization | FR-PLAN-01, FR-PLAN-02, FR-PLAN-03; FR-EQUIP-01, FR-EQUIP-02, FR-EQUIP-03; FR-USER-03; FR-TRAIN-05, FR-TRAIN-06 | Analytics, Recommendations, Training Planning, Equipment |
+| Commerce | FR-PROMO-01, FR-PROMO-02, FR-PROMO-03; FR-INTEGRATION-01, FR-INTEGRATION-02 | Promotions, Integration Layer |
+| Extended ecosystem | FR-DEVICE-01, FR-DEVICE-02, FR-DEVICE-03 и расширение интеграций | Integration Layer, дополнительные масштабируемые компоненты по подтверждённой необходимости |
+
+Не все логические компоненты target architecture обязаны быть отдельными
+deployable services на ранних этапах. Несколько доменов могут находиться в одном
+deployable unit при сохранении доменных границ и логического владения данными
+(ADR-001, ADR-006).
+
+Outbox и надёжная фоновая публикация TrainingCompleted предусматриваются при
+введении событийной обработки (ADR-014); таблица показывает основные компоненты
+этапов, а не все инфраструктурные зависимости. Публикация достижений в Social
+расширяется после появления Gamification на следующем этапе.

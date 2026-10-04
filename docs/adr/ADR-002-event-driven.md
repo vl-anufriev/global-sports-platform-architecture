@@ -22,7 +22,9 @@
 Использовать event-driven взаимодействие для операций, которые не требуют
 немедленного результата пользователю.
 
-После успешного сохранения тренировки Training публикует событие:
+Training сохраняет тренировку и Outbox Event в одной локальной транзакции
+и подтверждает сохранение пользователю. Outbox Publisher публикует событие
+после commit, согласно [ADR-014](ADR-014-transactional-outbox.md):
 
 `TrainingCompleted`
 
@@ -30,21 +32,29 @@
 
 - Analytics;
 - Gamification;
-- Notifications;
 - Recommendations.
 
 ```text
-Training
+Training + Outbox
+    |
+    v
+Outbox Publisher
     |
     | TrainingCompleted
     v
  Event Broker
     |
     +--> Analytics
-    +--> Gamification
-    +--> Notifications
+    +--> Gamification --> AchievementEarned --> Event Broker --> Notifications
     +--> Recommendations
 ```
+
+Gamification публикует `AchievementEarned`, только если обнаружено и сохранено
+новое достижение. Notifications подписывается на это событие для уведомлений
+о достижениях. Подписки на другие события допустимы, если уведомление относится
+непосредственно к соответствующему событию.
+
+Ответ пользователю не ожидает публикации в broker или завершения consumers.
 
 ## Alternatives
 
@@ -92,4 +102,5 @@ Training последовательно вызывает остальные ко
 - QA-01 — масштабируемость;
 - QA-02 — надёжность;
 - NFR-REL-01;
-- NFR-SCALE-02.
+- NFR-SCALE-02;
+- ADR-014.

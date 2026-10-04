@@ -5,25 +5,32 @@
 
 На данном этапе архитектура не привязана к конкретному облачному провайдеру.
 
+## Current / baseline infrastructure
+
+Базовое развёртывание предполагает один основной регион. Количество deployable
+units и экземпляров определяется этапом реализации; логические домены не требуют
+отдельных сервисов с первого релиза (ADR-001).
+
 ```mermaid
 flowchart TB
 
     Users[Global Users]
 
-    Users --> CDN[CDN / Edge]
     Users --> WAF[WAF / Load Balancer]
 
     WAF --> Gateway[API Gateway]
 
-    subgraph Region[Cloud Region]
+    subgraph Region[Single Primary Region]
 
         Gateway --> Services[Application Services]
 
         Services --> Cache[Distributed Cache]
         Services --> DB[(Databases)]
-        Services --> Broker[Event Broker]
+        DB --> Publisher[Outbox Publisher]
+        Publisher --> Broker[Event Broker / Event Bus]
 
         Broker --> Workers[Async Workers]
+        Workers -->|AchievementEarned from Gamification| Broker
 
         Workers --> DB
 
@@ -32,20 +39,26 @@ flowchart TB
     end
 
     Services --> Observability[Logs / Metrics / Tracing]
+    Publisher --> Observability
+    Workers --> Observability
+    Broker --> Observability
 
-    Services --> External[External APIs / Devices]
+    Services --> Integration[Integration Layer]
+    Integration <--> External[External APIs / Devices]
 ```
 
-# CDN / Edge
+Training сохраняет тренировку и Outbox Event в одной локальной транзакции своего
+хранилища. Publisher доставляет `TrainingCompleted` в broker, затем отмечает
+событие опубликованным. Отправка ответа пользователю не ожидает broker или workers
+(ADR-008, ADR-014).
 
-Может использоваться для:
+Async Workers независимо обрабатывают `TrainingCompleted` для Analytics,
+Gamification и Recommendations. При новом достижении Gamification публикует
+`AchievementEarned`, который обрабатывает Notifications.
 
-- статических ресурсов;
-- изображений;
-- публичного контента;
-- снижения задержки для глобальной аудитории.
-
----
+Узел Databases обозначает инфраструктуру хранения: логическое владение данными
+остаётся у доменов, а общая физическая инфраструктура на раннем этапе не разрешает
+прямой доступ к данным другого домена (ADR-006).
 
 # WAF / Load Balancer
 
@@ -115,21 +128,47 @@ flowchart TB
 
 ---
 
-# Региональное развёртывание
+## Future / optional scaling capabilities
+
+CDN и multi-region рассматриваются как возможности дальнейшего масштабирования,
+а не как принятые обязательства текущего развёртывания.
+
+# CDN / Edge — Optional / Future
+
+[ADR-012](../../adr/ADR-012-cdn.md) имеет статус Proposed.
+CDN вводится при подтверждённой необходимости глобальной доставки публичного
+контента и не является обязательной частью MVP.
+
+Может использоваться для:
+
+- статических ресурсов;
+- изображений;
+- публичного контента;
+- снижения задержки для глобальной аудитории.
+
+---
+
+# Региональное развёртывание — Optional / Future
 
 Так как приложение ориентировано на глобальную аудиторию, архитектура должна
 допускать развёртывание компонентов в нескольких регионах.
 
+Multi-region вводится после появления подтверждённых требований latency,
+availability или data residency. [ADR-011](../../adr/ADR-011-regional-deployment.md)
+остаётся Proposed.
+
 ```mermaid
 flowchart TB
 
-    Global[Global Routing]
+    subgraph Future[Optional / Future]
+        Global[Global Routing]
 
-    Global --> EU[EU Region]
-    Global --> US[US Region]
+        Global --> EU[EU Region]
+        Global --> US[US Region]
 
-    EU --> EUApp[Application Services]
-    US --> USApp[Application Services]
+        EU --> EUApp[Application Services]
+        US --> USApp[Application Services]
+    end
 ```
 
 Конкретный вариант:
@@ -138,5 +177,5 @@ flowchart TB
 - active-passive;
 - разделение данных по регионам;
 
-должен определяться отдельным ADR после появления количественных требований
-по нагрузке и доступности.
+должен определяться при уточнении ADR-011 после появления количественных требований
+по нагрузке, доступности и размещению данных.

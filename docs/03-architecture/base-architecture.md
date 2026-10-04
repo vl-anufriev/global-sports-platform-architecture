@@ -22,6 +22,15 @@
 
 ## 2. Архитектурная схема
 
+Диаграмма отражает логические доменные границы целевой архитектуры.
+Она не означает, что каждый компонент должен с первого релиза развёртываться
+как отдельный микросервис.
+
+На ранних этапах несколько доменов могут находиться в одном deployable unit.
+Физическое разделение выполняется при наличии подтверждённой необходимости
+независимого масштабирования, развёртывания, владения командой или изоляции
+отказов, в соответствии с [ADR-001](../adr/ADR-001-architecture-style.md).
+
 ```mermaid
 flowchart TB
 
@@ -37,12 +46,15 @@ flowchart TB
     Gateway --> Equipment[Equipment]
     Gateway --> Promotions[Promotions]
 
-    Training --> Events[Event Bus]
+    Training --> Persist[(Training + Outbox)]
+    Persist --> Publisher[Outbox Publisher]
+    Publisher -->|TrainingCompleted| Events[Event Bus]
 
-    Events --> Analytics[Analytics]
-    Events --> Challenges
-    Events --> Notification[Notifications]
-    Events --> Recommendation[Recommendations]
+    Events -->|TrainingCompleted| Analytics[Analytics]
+    Events -->|TrainingCompleted| Challenges
+    Events -->|TrainingCompleted| Recommendation[Recommendations]
+    Challenges -->|AchievementEarned| Events
+    Events -->|AchievementEarned| Notification[Notifications]
 
     Analytics --> Recommendation
     Equipment --> Recommendation
@@ -96,6 +108,10 @@ flowchart TB
 - основные показатели тренировки;
 - публикацию событий о завершении тренировок.
 
+Training сохраняет тренировку и Outbox Event в одной локальной транзакции.
+Outbox Publisher отправляет события в Event Bus независимо от пользовательского
+ответа, согласно [ADR-014](../adr/ADR-014-transactional-outbox.md).
+
 ---
 
 ## Social & Groups
@@ -117,6 +133,8 @@ flowchart TB
 - спортивные челленджи;
 - соревнования;
 - рейтинги.
+
+При обнаружении нового достижения сохраняет его и публикует `AchievementEarned`.
 
 ---
 
@@ -180,6 +198,10 @@ flowchart TB
 - социальных событиях;
 - других событиях приложения.
 
+Уведомления о достижениях инициируются событием `AchievementEarned` от Gamification,
+а не самим фактом завершения тренировки. Подписки на другие события допустимы,
+если уведомление относится непосредственно к соответствующему событию.
+
 ---
 
 ## Integration Layer
@@ -211,9 +233,11 @@ flowchart TB
 
 # 5. Асинхронное взаимодействие
 
-После завершения тренировки Training может опубликовать:
-
-`TrainingCompleted`
+После завершения тренировки Training валидирует данные и сохраняет тренировку
+вместе с Outbox Event в одной локальной транзакции. После commit backend
+подтверждает сохранение пользователю, не ожидая вторичной обработки.
+Outbox Publisher публикует `TrainingCompleted` в Event Bus и помечает запись
+опубликованной после подтверждения broker.
 
 Далее событие обрабатывается независимо:
 
@@ -221,13 +245,15 @@ flowchart TB
 TrainingCompleted
        |
        +--> Analytics
-       +--> Gamification
-       +--> Notifications
+       +--> Gamification --> AchievementEarned --> Event Bus --> Notifications
        +--> Recommendations
 ```
 
 Такой подход позволяет не блокировать сохранение тренировки дополнительными
 вычислениями.
+
+Результаты вторичной обработки могут появляться с небольшой задержкой
+из-за eventual consistency. Consumers обрабатывают повторные сообщения идемпотентно.
 
 ---
 
@@ -242,7 +268,7 @@ TrainingCompleted
 - асинхронная обработка;
 - очереди событий;
 - кеширование;
-- возможность регионального размещения системы.
+- возможность регионального размещения системы при подтверждённых требованиях (ADR-011, Proposed).
 
 Особенно важна возможность независимо масштабировать:
 
@@ -261,6 +287,7 @@ TrainingCompleted
 - локальное сохранение данных на мобильном устройстве;
 - повторные попытки доставки;
 - идемпотентная обработка;
+- Transactional Outbox для атомарного сохранения тренировки и события;
 - очереди сообщений;
 - retry;
 - изоляция отказов внешних систем.
@@ -274,11 +301,13 @@ TrainingCompleted
 ```text
 Training
    |
-   +--> Training saved
+   +--> DB transaction: Training + Outbox Event
    |
-   +--> Event published
+   +--> Success response
    |
-   +--> Notification temporarily unavailable
+   +--> Outbox Publisher --> Event Bus --> Background consumers
+                                             |
+                                             +--> Notifications temporarily unavailable
 ```
 
 Недоступность Notifications не влияет на сохранность тренировки.
@@ -313,14 +342,14 @@ Training
 
 | Требование / атрибут | Архитектурное решение |
 |---|---|
-| Глобальные пользователи | горизонтальное масштабирование и возможность регионального развёртывания |
-| Массовые соревнования | event-driven обработка и независимое масштабирование |
-| Нестабильное соединение | offline-first мобильный клиент |
-| Надёжность | retry, idempotency, очереди |
-| Внешние устройства | Integration Layer |
-| Социальный поиск | Social-компонент и географический поиск |
-| Масштабируемость | независимые доменные компоненты |
-| Безопасность | централизованная аутентификация и авторизация |
-| Конфиденциальность | privacy settings и consent management |
-| Расширяемость | доменные границы и события |
-| Наблюдаемость | централизованные logs, metrics и tracing |
+| Глобальные пользователи: BG-04, NFR-GLOBAL-01, NFR-GLOBAL-02, NFR-GLOBAL-03, NFR-GLOBAL-04 | UTC, пользовательские timezone, локализация и региональный контекст; региональное развёртывание — возможное развитие (ADR-011, Proposed) |
+| Массовые соревнования: QA-01, NFR-SCALE-02 | event-driven обработка и независимое масштабирование |
+| Нестабильное соединение: NFR-REL-03, CS-02 | offline-first мобильный клиент (ADR-005) |
+| Надёжность: QA-02, NFR-REL-01, NFR-REL-02 | Transactional Outbox (ADR-014), retry, idempotency, очереди |
+| Внешние устройства: NFR-INT-01 | Integration Layer (ADR-007) |
+| Социальный поиск: FR-SOCIAL-02, FR-SOCIAL-03, FR-SOCIAL-04 | Social-компонент; специализированный географический индекс — при необходимости (ADR-009, Proposed) |
+| Масштабируемость: QA-01, NFR-SCALE-01 | независимые доменные компоненты (ADR-001) |
+| Безопасность: QA-03, NFR-SEC-01, NFR-SEC-02, NFR-SEC-03 | защищённые соединения и хранение, централизованная аутентификация и авторизация |
+| Конфиденциальность: QA-03, NFR-SEC-04 | privacy settings и consent management (ADR-010) |
+| Расширяемость: BG-04, NFR-EXT-01 | доменные границы и события |
+| Наблюдаемость: NFR-OBS-01 | централизованные logs, metrics и tracing (ADR-013) |

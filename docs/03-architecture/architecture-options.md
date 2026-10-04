@@ -86,7 +86,14 @@ Event Bus
   -----------------------------
 |           |              |
 v           v              v
-Analytics Gamification Notifications
+Analytics Gamification Recommendations
+              |
+              | AchievementEarned
+              v
+          Event Bus
+              |
+              v
+         Notifications
 ```
 
 ### Пример
@@ -100,8 +107,13 @@ Analytics Gamification Notifications
 - Пересчёт статистики.
 - Проверка достижений.
 - Изменение рейтинга.
-- Уведомление друзей.
+- Уведомление друзей по `AchievementEarned` после обнаружения нового достижения.
 - Обновление рекомендаций.
+
+В выбранной архитектуре Training сохраняет тренировку и Outbox Event в одной
+транзакции и подтверждает сохранение пользователю. Outbox Publisher публикует
+`TrainingCompleted` независимо от ответа (ADR-014); вторичные consumers не входят
+в critical path.
 
 ## Выбранный подход
 
@@ -154,9 +166,8 @@ Analytics Gamification Notifications
 Training completed
 |
 +--> statistics
-+--> achievements
++--> achievements --> AchievementEarned --> notifications
 +--> rankings
-+--> notifications
 +--> recommendations
 ```
 

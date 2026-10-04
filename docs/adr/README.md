@@ -23,6 +23,7 @@
 | [ADR-011](ADR-011-regional-deployment.md) | Региональное развёртывание системы | Proposed |
 | [ADR-012](ADR-012-cdn.md) | Использование CDN | Proposed |
 | [ADR-013](ADR-013-observability.md) | Централизованные логи, метрики и distributed tracing | Accepted |
+| [ADR-014](ADR-014-transactional-outbox.md) | Transactional Outbox для публикации доменных событий | Accepted |
 
 ## Статусы
 

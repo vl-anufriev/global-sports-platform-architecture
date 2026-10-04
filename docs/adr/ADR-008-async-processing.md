@@ -19,7 +19,7 @@
 
 1. принять тренировку;
 2. проверить данные;
-3. сохранить тренировку;
+3. сохранить тренировку и Outbox Event в одной локальной транзакции;
 4. подтвердить сохранение пользователю.
 
 ### Background processing
@@ -38,16 +38,24 @@ Mobile
    v
 Training
    |
-   +--> Persist
+   +--> Persist Training + Outbox Event
    |
    +--> Success response
    |
-   +--> Event
+   +--> Outbox Publisher
+           |
+           v
+       Event Broker: TrainingCompleted
            |
            +--> Analytics
-           +--> Gamification
-           +--> Notifications
+           +--> Gamification --> AchievementEarned --> Event Broker --> Notifications
+           +--> Recommendations
 ```
+
+Outbox Publisher доставляет сохранённое событие независимо от пользовательского
+ответа, согласно [ADR-014](ADR-014-transactional-outbox.md). Уведомление о достижении
+отправляется только по `AchievementEarned` после проверки и сохранения достижения
+в Gamification. Повторные сообщения обрабатываются идемпотентно.
 
 ## Alternatives
 
@@ -76,4 +84,5 @@ Training
 - QA-02;
 - NFR-REL-01;
 - NFR-SCALE-02;
-- ADR-002.
+- ADR-002;
+- ADR-014.

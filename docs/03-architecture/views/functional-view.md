@@ -8,24 +8,39 @@ flowchart LR
 
     App[Mobile App] --> API[API Gateway]
 
-    API --> User[User & Profile]
+    API --> User[Identity & Profile]
     API --> Training[Training]
-    API --> Social[Social]
-    API --> Game[Gamification]
-    API --> Planning[Planning]
+    API --> Social[Social & Groups]
+    API --> Game[Challenges & Gamification]
+    API --> Planning[Training Planning]
     API --> Equipment[Equipment]
     API --> Promo[Promotions]
 
-    Training --> Analytics[Analytics]
-    Analytics --> Recommendations[Recommendations]
+    Training -->|TrainingCompleted via Outbox| Bus[Event Bus]
+    Bus -->|TrainingCompleted| Analytics[Analytics]
+    Bus -->|TrainingCompleted| Game
+    Bus -->|TrainingCompleted| Recommendations[Recommendations]
+    Game -->|AchievementEarned| Bus
+    Bus -->|AchievementEarned| Notify[Notifications]
+    Analytics --> Recommendations
+    Equipment --> Recommendations
+    Recommendations --> Planning
+    Recommendations --> Promo
 
     External[External Systems]
         --> Integrations[Integration Layer]
 
     Integrations --> Training
+    Integrations --> Promo
 ```
 
-## User & Profile
+Диаграмма показывает логические доменные границы целевой архитектуры.
+Training сохраняет тренировку и Outbox Event в одной транзакции; событие
+публикуется через Outbox Publisher (ADR-014). Ответ пользователю не зависит
+от вторичных consumers. Event Bus и Event Broker обозначают один механизм
+асинхронного обмена событиями во всех представлениях.
+
+## Identity & Profile
 
 Отвечает за:
 
@@ -89,6 +104,11 @@ flowchart LR
 - новости;
 - акции;
 - региональные предложения.
+
+## Notifications
+
+Отвечает за отправку уведомлений, включая уведомления о достижениях по
+`AchievementEarned` от Gamification, с учётом пользовательских настроек приватности.
 
 ## Integration Layer
 
